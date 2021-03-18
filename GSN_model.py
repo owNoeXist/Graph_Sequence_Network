@@ -127,13 +127,16 @@ class MyDataLayer(layers.Layer):
         self.HalfDim = 32
         self.Dense1 = layers.Dense(self.EmbedDim, activation='relu')
         self.Dense2 = layers.Dense(self.HalfDim, activation='relu')
-        self.lstm = layers.LSTM(self.HalfDim)
+        self.lstm = layers.LSTM(self.HalfDim, activation='tanh',return_sequences=True, return_state=True)
     
     def call(self, LITERAL, SEMANTIC):
-        mlpEmbed1 = self.Dense1(LITERAL)
-        mlpEmbed2 = self.Dense2(mlpEmbed1)
-        lstmEmbed = self.lstm(SEMANTIC)
-        output = tf.constant([mlpEmbed2,lstmEmbed],axis = 2)
+        #MLP
+        mlpMid = self.Dense1(LITERAL)
+        mlpEmbed = self.Dense2(mlpMid)
+        #LSTM
+        lstmEmbed,fms,fcs = self.lstm(SEMANTIC)
+        #Merge
+        output = tf.concat([mlpEmbed,lstmEmbed],-1)
         return output
 
 class MyEmbedLayer(layers.Layer):

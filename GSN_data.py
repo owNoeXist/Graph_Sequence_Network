@@ -173,7 +173,7 @@ class MyData():
                         break
                     semantic1st[i, u, w] = graph1st.semantic[u][w]
                 
-            graph2nd = DATA2ND[pairs[i][0]]
+            graph2nd = DATA2ND[pairs[i][1]]
             for u in range(graph2nd.nodeNum):
                 for v in graph2nd.succsCFG[u]:
                     cfg2nd[i, u, v] = 1
