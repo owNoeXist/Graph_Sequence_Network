@@ -8,7 +8,6 @@ def TrainModel(MODEL, TRAIN_DATA, VALID_DATA, MODEL_PATH, TRAIN_EPOCH, TEST_FREQ
         os.makedirs(savePath)
     savePath=os.path.join(savePath, MODEL.name())
     #Test model
-    print("1")
     trainRocAuc = MODEL.TestModel(TRAIN_DATA)
     MODEL.say("Initial training auc = {0} @ {1}".format(trainRocAuc, datetime.now()))
     validRocAuc = MODEL.TestModel(VALID_DATA)
