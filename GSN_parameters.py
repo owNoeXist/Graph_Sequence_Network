@@ -8,14 +8,17 @@ TestFreq    = 5
 SaveFreq    = 50
 Hyper       = {
     'Literal1st':   6,
-    'Semantic1st':   200,
+    'Semantic1st':  200,
     'Literal2nd':   5,
-    'Semantic2nd':   200,
-    'IteraTimes':   5,
-    'EmbedLayer':   2,
+    'Semantic2nd':  200,
+    'CFGForwardTime':   4,
+    'CFGReverseTime':   2,
+    'PFGIteraTime': 2,
+    'MLPLayer':   2,
     'EmbedDim':     64,
+    'DropoutRate':  0.4,
     'OutputDim':    64,
-    'BatchSize':    5,
-    'Multiple':     2,
-    'LearningRate': 1e-4
+    'BatchSize':    8,
+    'BatchMultiple':2,
+    'LearningRate': 0.0001
 }

@@ -1,141 +1,133 @@
 import os
-import json
+import numpy as np
 from datetime import datetime
 
-def TrainModel(MODEL, TRAIN_DATA, VALID_DATA, MODEL_PATH, TRAIN_EPOCH, TEST_FREQ, SAVE_FREQ):
-    savePath=os.path.join(MODEL_PATH, MODEL.name())
-    if not os.path.exists(savePath):
-        os.makedirs(savePath)
-    savePath=os.path.join(savePath, MODEL.name())
-    #Test model
-    trainRocAuc = MODEL.TestModel(TRAIN_DATA)
-    MODEL.say("Initial training auc = {0} @ {1}".format(trainRocAuc, datetime.now()))
-    validRocAuc = MODEL.TestModel(VALID_DATA)
-    MODEL.say("Initial validate auc = {0} @ {1}".format(validRocAuc, datetime.now()))
-
-    trainStep = [0]
-    trainLoss= [2]
-    testStep = [0]
-    trainAuc = [trainRocAuc]
-    validAuc = [validRocAuc]
-
+#========================================================================
+def TrainModel(MODEL, TRAIN_DATA, TRAIN_TEST, VALID_TEST, MODEL_PATH, TRAIN_EPOCH, TEST_FREQ, SAVE_FREQ, RESULT_PATH):
+    result = {"TrainStep":[],"TrainLoss":[],"TestStep":[],"TrainAuc":[],"ValidAuc":[]}
     bestAuc=0
-    for i in range(1, TRAIN_EPOCH+1):
-        MODEL.say("EPOCH {0}/{1} @ {2}".format(i, TRAIN_EPOCH, datetime.now()))
-		#train for one epoch
-        loss = MODEL.TrainModel(TRAIN_DATA)
-        MODEL.say("Training loss= {0}".format(loss))
-        trainStep.append(i)
-        trainLoss.append(loss)
-
+    for i in range(TRAIN_EPOCH+1):
+        if i > 0:
+            MODEL.say("EPOCH {0}/{1} @ {2}".format(i, TRAIN_EPOCH, datetime.now()))
+            #train for one epoch
+            loss = MODEL.TrainModel(TRAIN_DATA)
+            MODEL.say("Training loss= {}".format(loss))
+            result["TrainStep"].append(i)
+            result["TrainLoss"].append(float(loss))
         #test model
-        if (i % TEST_FREQ == 0):  
-            trainRocAuc = MODEL.TestModel(TRAIN_DATA)
-            MODEL.say("Training auc = {0}".format(trainRocAuc))
-
-            validRocAuc = MODEL.TestModel(VALID_DATA)
-            MODEL.say("Validate auc = {0}".format(validRocAuc))
-
-            if validRocAuc > bestAuc+1 :
-                path = MODEL.save(savePath+'_best')
-                MODEL.say("Model saved in {}".format(path))
+        if i % TEST_FREQ == 0:  
+            trainRocAuc = MODEL.TestModel(TRAIN_TEST)
+            MODEL.say("Training auc = {}".format(trainRocAuc))
+            validRocAuc = MODEL.TestModel(VALID_TEST)
+            MODEL.say("Validate auc = {}".format(validRocAuc))
+            result["TestStep"].append(i)
+            result["TrainAuc"].append(trainRocAuc)
+            result["ValidAuc"].append(validRocAuc)
+            if validRocAuc > bestAuc :
                 bestAuc = validRocAuc
+                MODEL.save(MODEL_PATH, NAME="_best")
+        if i % SAVE_FREQ == 0:
+            MODEL.save(MODEL_PATH)
+    MODEL.saveResult(result, RESULT_PATH, FILE_NAME="trainLossAuc")
 
-            testStep.append(i)
-            trainAuc.append(trainRocAuc)
-            validAuc.append(validRocAuc)
+#========================================================================
+def GetTopK(MODEL, DATAS, RESULT_PATH, SELECT = 0, K = 10):
+    result = {"Auc":0, "SerialNum":[]}
+    num = 0
+    sum = 0
+    for i in range(len(DATAS.rawData[SELECT*2])):
+        data = DATAS.GetTopkEpoch(DATAS.rawData[SELECT*2][i], DATAS.rawData[SELECT*2+1])
+        label = MODEL.GetTopkLabel(data)
+        betterNum = 1
+        for i in range(len(label)):
+            if label[i] > label[num]:
+                betterNum += 1
+        result["SerialNum"].append(betterNum)
+        num+=1
+        if betterNum <= K:
+            sum+=1
+        print("{0}/{1} {2}".format(num,len(label),datetime.now()))
+    result["Auc"] = sum/num
+    print("sum/all:{0}/{1}".format(sum,num))
+    MODEL.saveResult(result, RESULT_PATH, FILE_NAME="topk")
 
-		
-        if (i % SAVE_FREQ == 0):
-            path = MODEL.save(savePath, i)
-            MODEL.say("Model saved in {}".format(path))
+#========================================================================
+def MatchFunction(MODEL, DATAS, RESULT_PATH):
+    result = {"auc":0, "match":[],"funcName":[]}
+    #Get all cos
+    num = 0
+    allCos = []
+    funcName = []
+    while True:
+        data = DATAS.GetTopkEpoch(num,DATAS.rawData[4][num],DATAS.rawData[5])
+        if data == []:
+            break
+        cos = MODEL.GetTopkCos(data)
+        allCos.append(cos)
+        funcName.append("{0}.{1}".format(num,DATAS.rawData[4][num].name))
+        num+=1
+        print("{0}/{1} {2}".format(num,len(cos),datetime.now()))
+    #Match function
+    match = []
+    allSort = []
+    distance = []
+    for value in allCos:
+        sort = cosSort(value)
+        allSort.append(sort)
+        distance.append(sort[0][0]-sort[1][0])
+    for i in range(len(distance)):
+        max = maxDistance(distance)
+        for j in range(len(allSort[max])):
+            if repeatCheck(allSort[max][j][1],match):
+                match.append((max,allSort[max][j][1]))
+                break
+        distance[max]=0
+        updateDistance(match,allSort,distance)
+    matched=0
+    for value in match:
+        if value[0]==value[1]:
+            matched+=1
+    print(match)
+    print(funcName)
+    print("{0}/{1}".format(matched,len(match)))
+    #Save result
+    result["auc"] = matched/len(match)
+    result["match"] = match
+    result["funcName"] = funcName
+    MODEL.saveResult(result, RESULT_PATH, FILE_NAME="match")
 
-    raw_json = {}
-    raw_json["TrainStep"] = trainStep
-    raw_json["TrainLoss"] = trainLoss
-    raw_json["TestStep"] = testStep
-    raw_json["TrainAuc"] = trainAuc
-    raw_json["ValidAuc"] = validAuc
-    filePath=os.path.join("./Result",(MODEL.name()+"-trainauc.txt"))
-    file=open(filePath,'w')
-    file.write(json.dumps(raw_json))
-    file.write('\n')
-    file.close()
+def cosSort(cos):
+    sort = {}
+    for i in range(len(cos)):
+        sort[cos[i].numpy()]=i
+    return sorted(sort.items(),reverse=True)
 
-    return raw_json
+def maxDistance(DISTANCE):
+    max=0
+    maxDst=0
+    for i in range(len(DISTANCE)):
+        if DISTANCE[i] > maxDst:
+            max=i
+            maxDst=DISTANCE[i]
+    return max
 
-'''
-#--------------------------------------Make result Visualized-----------------------------------
-def DrawTrainLine(Result_PATH, RAW_JSON=None):
-    if RAW_JSON == None:
-        filePath=os.path.join(Result_PATH,"trainauc.txt")
-        file=open(filePath,'r')
-        graphInfo = json.loads(file.readlines().strip())
-        file.close()
-    else:
-        graphInfo = RAW_JSON
-    #Initial drawing paper
-    plt.rcParams['figure.figsize'] = (12, 5)
-	#Draw Loss Line
-    graphAuc=plt.subplot(1,2,1)
-    graphAuc.grid(True,axis='y')
-    graphAuc.set_title('Loss Graph',fontsize=15)
-    graphAuc.set_xlabel('Step',fontsize=10)
-    graphAuc.set_xlim(0, len(graphInfo["TrainStep"])-1)
-    graphAuc.set_ylabel('Loss', fontsize=10)
-    graphAuc.set_ylim(0,1)
-    graphAuc.plot(graphInfo["TrainStep"],graphInfo["TrainLoss"],color='red',linewidth=1,linestyle='-')
-    #Draw Auc Line
-    graphAuc=plt.subplot(1,2,2)
-    graphAuc.grid(True,axis='y')
-    graphAuc.set_title('Auc Graph', fontsize=15)
-    graphAuc.set_xlabel('Step', fontsize=10)
-    graphAuc.set_xlim(0, len(graphInfo["TrainStep"])-1)
-    graphAuc.set_ylabel('Auc', fontsize=10)
-    graphAuc.set_ylim(0.8,1)
-    graphAuc.plot(graphInfo["TestStep"],graphInfo["TrainAuc"],color='red',linewidth=1,linestyle='-')
-    graphAuc.plot(graphInfo["TestStep"],graphInfo["ValidAuc"],color='green',linewidth=1,linestyle='-')
-    plt.show()
+def repeatCheck(value,MATCH):
+    for i in range(len(MATCH)):
+        if value==MATCH[i][1]:
+            return False
+    return True
 
-def Draw_Roc(Result_PATH, RAW_JSON=None):
-    if RAW_JSON == None:
-        filePath=os.path.join(Result_PATH,"roc.txt")
-        file=open(filePath,'r')
-        graphInfo = json.loads(file.readlines().strip())
-        file.close()
-    else:
-        graphInfo = RAW_JSON
-    #Initial drawing paper
-    plt.rcParams['figure.figsize'] = (5, 5)
-    graphRoc=plt.subplot(1,1,1)
-    graphRoc.set_title('Roc Graph',fontsize=15)
-    graphRoc.set_xlabel('False Positive Rate',fontsize=10)
-    graphRoc.set_xlim(-0.05,1)
-    graphRoc.set_ylabel('True Positive Rate', fontsize=10)
-    graphRoc.set_ylim(0,1.05)
-    graphRoc.plot(graphInfo["Fpr"], graphInfo["Tpr"], color='red', linewidth=1, linestyle='-', 
-                    label='ROC curve (area = %0.3f)' % graphInfo["Auc"])
-    graphRoc.legend(loc='lower right')
-    plt.show()
-
-def Draw_PR(Result_PATH, RAW_JSON=None):
-    if RAW_JSON == None:
-        filePath=os.path.join(Result_PATH,"pr.txt")
-        file=open(filePath,'r')
-        graphInfo = json.loads(file.readlines().strip())
-        file.close()
-    else:
-        graphInfo = RAW_JSON
-    #Initial drawing paper
-    plt.rcParams['figure.figsize'] = (5, 5)
-    graphRoc=plt.subplot(1,1,1)
-    graphRoc.set_title('Precision-Recall Graph',fontsize=15)
-    graphRoc.set_xlabel('Recall',fontsize=10)
-    graphRoc.set_xlim(-0.05,1)
-    graphRoc.set_ylabel('Precision', fontsize=10)
-    graphRoc.set_ylim(0,1.05)
-    graphRoc.plot(graphInfo["Recall"], graphInfo["Precision"], color='red', linewidth=1, linestyle='-', 
-                    label='ROC curve (area = %0.3f)' % graphInfo["Auc"])
-    graphRoc.legend(loc='lower right')
-    plt.show()
-'''
+def updateDistance(MATCH,ALLSORT,DISTANCE):
+    for i in range(len(DISTANCE)):
+        if DISTANCE[i]!=0:
+            j=0
+            for j in range(len(ALLSORT[i])):
+                if repeatCheck(ALLSORT[i][j][1],MATCH):
+                    break
+            k=0
+            for k in range(j+1,len(ALLSORT[i])):
+                if repeatCheck(ALLSORT[i][k][1],MATCH):
+                    break
+            DISTANCE[i]=ALLSORT[i][j][0]-ALLSORT[i][k][0]
+   
+    

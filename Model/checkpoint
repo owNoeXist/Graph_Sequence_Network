@@ -1,0 +1,2 @@
+model_checkpoint_path: "GSN_best"
+all_model_checkpoint_paths: "GSN_best"
