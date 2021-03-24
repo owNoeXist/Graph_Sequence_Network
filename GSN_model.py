@@ -6,7 +6,6 @@ import tensorflow as tf
 
 from datetime import datetime
 from tensorflow.keras import layers,Model
-from sklearn.metrics import auc, roc_curve, precision_recall_curve
 
 class GSN():
     def __init__(self, HYPER_PARAMETER):
@@ -38,8 +37,11 @@ class GSN():
         if NAME != "":
             savePath += NAME
         self.model.load_weights(savePath)
+        self.say("Model loaded from {}".format(savePath))
 
     def saveResult(self, RESULT, RESULT_PATH, FILE_NAME="", ):
+        if not os.path.exists(RESULT_PATH):
+            os.makedirs(RESULT_PATH)
         RESULT["HyperParameter"] = self.HyperParameter
         filePath=os.path.join(RESULT_PATH,(self.name()+"_"+datetime.now().strftime('%Y-%m-%d_%H:%M:%S')+"_"+FILE_NAME+".json"))
         file=open(filePath,'w')
@@ -65,7 +67,13 @@ class GSN():
     def TestModel(self, EPOCH_DATA):
         testMethod = tf.keras.metrics.AUC()
         c1, p1, l1 ,s1 ,c2, p2, l2, s2, y  = EPOCH_DATA
-        predictions = self.model(c1, p1, l1 ,s1 ,c2, p2, l2, s2)
+        predictions = []
+        start = 0
+        pairNum = len(c1)
+        while start < pairNum:
+            end = min(start+2000,pairNum)
+            predictions += list(self.model(c1[start:end], p1[start:end], l1[start:end], s1[start:end], c2[start:end], p2[start:end], l2[start:end], s2[start:end]))
+            start = end
         testMethod.update_state(y, predictions)
         testResult = float(testMethod.result().numpy())
         return testResult
@@ -147,11 +155,11 @@ class MyGraphLayer(layers.Layer):
         self.mlp = []
         for _ in range(self.EmbedLayer):
             self.mlp.append(layers.Dense(EMBED_DIM,activation='relu'))
-        '''
+        
         self.mlpLFG = []
         for _ in range(self.EmbedLayer):
             self.mlpLFG.append(layers.Dense(EMBED_DIM,activation='relu'))
-        '''
+        
         w_init = tf.random_normal_initializer()
         self.wOutput = tf.Variable(initial_value=w_init(shape=(EMBED_DIM, OUTPUT_DIM), dtype = tf.float32),trainable=True)
         
@@ -181,7 +189,7 @@ class MyGraphLayer(layers.Layer):
                 transMid = dense(transMid)
             #Adding and Nonlinearity
             cfgReverseEmbed = tf.nn.tanh(cfgReverseEmbed + transMid)
-        '''
+        
         #Embedding by lfg
         lfgEmbed = tf.nn.relu(INPUT)
         for _ in range(self.LFGIteraTime):
@@ -192,10 +200,10 @@ class MyGraphLayer(layers.Layer):
                 transMid = dense(transMid)
             #Adding and Nonlinearity
             lfgEmbed = tf.nn.tanh(lfgEmbed + transMid)
-        '''
+        
         #dropOutput = self.Dropout(cfgForwardEmbed+cfgReverseEmbed)
         
-        midOutput = tf.reduce_sum(cfgForwardEmbed+cfgReverseEmbed, 1)
+        midOutput = tf.reduce_sum(cfgForwardEmbed+cfgReverseEmbed+lfgEmbed, 1)
         output = tf.matmul(midOutput, self.wOutput) + self.bOutput
     
         return output

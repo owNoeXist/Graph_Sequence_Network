@@ -34,7 +34,7 @@ class MyData():
                     data1st.append(data)
                 else:
                     data2nd.append(data)
-            print("{0} X86 functions, {1} C functions".format(len(data1st[-1]),len(data2nd[-1])))
+            print("{0}:{1} X86 functions, {2} C functions".format(dir,len(data1st[-1]),len(data2nd[-1])))
         data1st, data2nd = self.matchFunction(data1st, data2nd)
         dataPart = self.partData(data1st, data2nd, DATA_PATH, PARTITIONS)
         return dataPart
@@ -96,7 +96,8 @@ class MyData():
             j=0
             while j < len(DATA1ST[i]) and j < len(DATA2ND[i]):
                 if DATA1ST[i][j].name==DATA2ND[i][j].name:
-                    if DATA2ND[i][j].nodeNum <= 50 and 0.5 <= DATA1ST[i][j].nodeNum/DATA2ND[i][j].nodeNum <= 2:
+                    if DATA1ST[i][j].nodeNum <= 100 and DATA2ND[i][j].nodeNum <= 100 \
+                        and 0.5 <= DATA1ST[i][j].nodeNum/DATA2ND[i][j].nodeNum <= 2:
                         j+=1
                     else:
                         DATA1ST[i][j:]=DATA1ST[i][j+1:]
