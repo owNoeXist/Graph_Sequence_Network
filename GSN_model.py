@@ -24,18 +24,18 @@ class GSN():
         if self.logFile != None:
             self.logFile.write(string+'\n')
 
-    def save(self, MODEL_PATH, NAME = None):
+    def save(self, MODEL_PATH, NAME = ""):
         if not os.path.exists(MODEL_PATH):
             os.makedirs(MODEL_PATH)
         savePath=os.path.join(MODEL_PATH, self.name())
-        if NAME != None:
+        if NAME != "":
             savePath += NAME
         self.model.save_weights(savePath)
         self.say("Model saved in {}".format(savePath))
 
-    def load(self, MODEL_PATH, NAME = False):
+    def load(self, MODEL_PATH, NAME = ""):
         savePath=os.path.join(MODEL_PATH, self.name())
-        if NAME == True:
+        if NAME != "":
             savePath += NAME
         self.model.load_weights(savePath)
 
@@ -83,7 +83,7 @@ class MyModel(Model):
         self.Semantic2nd = HYPER_PARAMETER['Semantic2nd']
         self.CFGForwardTime = HYPER_PARAMETER['CFGForwardTime']
         self.CFGReverseTime = HYPER_PARAMETER['CFGReverseTime']
-        self.PFGIteraTime = HYPER_PARAMETER['PFGIteraTime']
+        self.LFGIteraTime = HYPER_PARAMETER['LFGIteraTime']
         self.MLPLayer = HYPER_PARAMETER['MLPLayer']
         self.EmbedDim = HYPER_PARAMETER['EmbedDim']
         self.DropoutRate = HYPER_PARAMETER['DropoutRate']
@@ -92,16 +92,18 @@ class MyModel(Model):
         super(MyModel, self).__init__()
         self.data1 = MyDataLayer( self.Literal1st, self.Semantic1st, self.EmbedDim, self.DropoutRate)
         self.data2 = MyDataLayer( self.Literal2nd, self.Semantic2nd, self.EmbedDim, self.DropoutRate)
-        self.embed = MyGraphLayer(self.CFGForwardTime, self.CFGReverseTime, self.PFGIteraTime, self.MLPLayer,self.EmbedDim,self.OutputDim, self.DropoutRate)
+        self.embed = MyGraphLayer(self.CFGForwardTime, self.CFGReverseTime, self.LFGIteraTime, self.MLPLayer,self.EmbedDim,self.OutputDim, self.DropoutRate)
         
-    def call(self, CFG1ST, PFG1ST, LITERAL1ST, SEMANTIC1ST, CFG2ND, PFG2ND, LITERAL2ND, SEMANTIC2ND):
+    def call(self, CFG1ST, LFG1ST, LITERAL1ST, SEMANTIC1ST, CFG2ND, LFG2ND, LITERAL2ND, SEMANTIC2ND):
         basicBlock1st = self.data1.call(LITERAL1ST, SEMANTIC1ST)
         cfg1st = tf.cast(CFG1ST, tf.float32)
-        embed1st = self.embed.call(basicBlock1st,cfg1st)
+        lfg1st = tf.cast(LFG1ST, tf.float32)
+        embed1st = self.embed.call(basicBlock1st,cfg1st,lfg1st)
 
         basicBlock2nd = self.data2.call(LITERAL2ND, SEMANTIC2ND)
         cfg2nd = tf.cast(CFG2ND, tf.float32)
-        embed2nd = self.embed.call(basicBlock2nd,cfg2nd)
+        lfg2nd = tf.cast(LFG2ND, tf.float32)
+        embed2nd = self.embed.call(basicBlock2nd,cfg2nd,lfg2nd)
 
         cosin = tf.keras.losses.cosine_similarity(embed1st, embed2nd, axis=1)
         label = tf.divide(-tf.subtract(cosin,1),2)
@@ -114,46 +116,49 @@ class MyDataLayer(layers.Layer):
         self.Literal = LITERAL
         self.Semantic = SEMANTIC
         self.EmbedDim = EMBED_DIM
-        self.HalfDim = 32
+        self.HalfDim = int(EMBED_DIM/2)
         self.DropoutRate = DROPOUT_RATE
 
         self.DenseIn = layers.Dense(self.EmbedDim,activation='relu')
+        self.DenseInDropout = layers.Dropout(self.DropoutRate)
         self.DenseOut = layers.Dense(self.HalfDim,activation='relu')
-        #self.LSTM = layers.LSTM(self.HalfDim, activation='tanh',return_sequences=True, return_state=True)
+        self.DenseOutDropout = layers.Dropout(self.DropoutRate)
         self.GRU = layers.GRU(self.HalfDim, activation='tanh',return_sequences=True, return_state=True)
-        #self.Dropout = layers.Dropout(self.DropoutRate)
+        self.GRUDropout = layers.Dropout(self.DropoutRate)
     
     def call(self, LITERAL, SEMANTIC):
-        mlpMid = self.DenseIn(LITERAL)
-        literal = self.DenseOut(mlpMid)
-        #sematic,fms,fcs = self.LSTM(SEMANTIC)
+        literal = self.DenseInDropout(self.DenseIn(LITERAL))
+        literal = self.DenseOutDropout(self.DenseOut(literal))
         sematic,fs = self.GRU(SEMANTIC)
+        sematic = self.GRUDropout(sematic)
         output = tf.concat([literal,sematic],-1)
-        #output = self.Dropout(output)
+        
         return output
 
 class MyGraphLayer(layers.Layer):
-    def __init__(self, CFG_FORWARD_TIME, CFG_REVERSE_TIME, PFG_ITERA_TIME, EMBED_LAYER, EMBED_DIM, OUTPUT_DIM, DROPOUT_RATE):
+    def __init__(self, CFG_FORWARD_TIME, CFG_REVERSE_TIME, LFG_ITERA_TIME, EMBED_LAYER, EMBED_DIM, OUTPUT_DIM, DROPOUT_RATE):
         super(MyGraphLayer, self).__init__()
         self.CFGForwardTime = CFG_FORWARD_TIME
         self.CFGReverseTime = CFG_REVERSE_TIME
-        self.PFGIteraTime = PFG_ITERA_TIME
+        self.LFGIteraTime = LFG_ITERA_TIME
         self.EmbedLayer = EMBED_LAYER
         self.DropoutRate = DROPOUT_RATE
 
         self.mlp = []
         for _ in range(self.EmbedLayer):
             self.mlp.append(layers.Dense(EMBED_DIM,activation='relu'))
-
-        #self.Dropout = layers.Dropout(self.DropoutRate)
-
+        '''
+        self.mlpLFG = []
+        for _ in range(self.EmbedLayer):
+            self.mlpLFG.append(layers.Dense(EMBED_DIM,activation='relu'))
+        '''
         w_init = tf.random_normal_initializer()
         self.wOutput = tf.Variable(initial_value=w_init(shape=(EMBED_DIM, OUTPUT_DIM), dtype = tf.float32),trainable=True)
         
         b_init = tf.zeros_initializer()
         self.bOutput = tf.Variable(initial_value=b_init(shape=(OUTPUT_DIM,), dtype = tf.float32),trainable=True)
     
-    def call(self, INPUT, CFG):
+    def call(self, INPUT, CFG, LFG):
         #Embedding by cfg
         cfgForwardEmbed = tf.nn.relu(INPUT)
         for _ in range(self.CFGForwardTime):
@@ -164,7 +169,7 @@ class MyGraphLayer(layers.Layer):
                 transMid = dense(transMid)
             #Adding and Nonlinearity
             cfgForwardEmbed = tf.nn.tanh(cfgForwardEmbed + transMid)
-        '''
+        
         #Embedding by reversed cfg
         CFGReverse = np.transpose(CFG,(0,2,1))
         cfgReverseEmbed = tf.nn.relu(INPUT)
@@ -176,10 +181,21 @@ class MyGraphLayer(layers.Layer):
                 transMid = dense(transMid)
             #Adding and Nonlinearity
             cfgReverseEmbed = tf.nn.tanh(cfgReverseEmbed + transMid)
-
-        dropOutput = self.Dropout(cfgForwardEmbed+cfgReverseEmbed)
         '''
-        midOutput = tf.reduce_sum(cfgForwardEmbed, 1)
+        #Embedding by lfg
+        lfgEmbed = tf.nn.relu(INPUT)
+        for _ in range(self.LFGIteraTime):
+            #Message convey
+            transMid = tf.matmul(LFG, lfgEmbed)
+            #Weight calculation
+            for dense in self.mlpLFG:
+                transMid = dense(transMid)
+            #Adding and Nonlinearity
+            lfgEmbed = tf.nn.tanh(lfgEmbed + transMid)
+        '''
+        #dropOutput = self.Dropout(cfgForwardEmbed+cfgReverseEmbed)
+        
+        midOutput = tf.reduce_sum(cfgForwardEmbed+cfgReverseEmbed, 1)
         output = tf.matmul(midOutput, self.wOutput) + self.bOutput
     
         return output

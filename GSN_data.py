@@ -2,7 +2,7 @@ import os
 import json
 import numpy as np
 
-from PCFG import PCFG
+from CFG import CFG
 
 class MyData():
     def __init__(self, HYPER_PARAMETER, DATA_PATH, PARTITIONS):
@@ -14,6 +14,7 @@ class MyData():
         self.BatchMultiple = HYPER_PARAMETER['BatchMultiple']
         self.rawData = self.ObtainRawData(DATA_PATH,PARTITIONS)
 
+    #================================================================
     def ObtainRawData(self, DATA_PATH, PARTITIONS):
         #Go through software folder and exact function into class
         data1st = []
@@ -22,67 +23,102 @@ class MyData():
             programPath = os.path.join(DATA_PATH,dir)
             if not os.path.isdir(programPath):
                 continue
-            #Go through file 
             for file in os.listdir(programPath):
-                filePath = os.path.join(programPath,file)
                 data = []
+                filePath = os.path.join(programPath,file)
                 with open(filePath) as lines:
-                    #Exact function PCFG
                     for line in lines:
-                        graphInfo = json.loads(line.strip())
-                        curPCFG = PCFG(dir+'-'+graphInfo['Funcname'], graphInfo['Nodenum'])
-                        for u in range(graphInfo['Nodenum']):
-                            for v in graphInfo['CFG'][u]:
-                                curPCFG.AddDirectedEdgeCFG(u, v)
-                            curPCFG.literal[u]  = np.array(graphInfo['Literal'][u], dtype=object)
-                            curPCFG.semantic[u] = np.array(graphInfo['Semantic'][u], dtype=object)
-                        data.append(curPCFG)
-                #Sort function by name and delete repeat function
-                data.sort(key=lambda PCFG:PCFG.name)
-                i=0
-                while i<len(data)-1:
-                    if data[i].name == data[i+1].name:
-                        if data[i].IsSame(data[i+1]):
-                            data[i:]=data[i+1:]
-                        else:    
-                            j=2
-                            while i+j < len(data) and data[i].name == data[i+j].name:
-                                j+=1
-                            data[i:]=data[i+j:]
-                    else:
-                        i+=1
+                        data.append(self.exactData(dir, line))
+                data = self.clearData(data)
                 if file not in ['DataC.json']:
                     data1st.append(data)
                 else:
                     data2nd.append(data)
             print("{0} X86 functions, {1} C functions".format(len(data1st[-1]),len(data2nd[-1])))
-        
-        #match function
-        for i in range(len(data1st)):
+        data1st, data2nd = self.matchFunction(data1st, data2nd)
+        dataPart = self.partData(data1st, data2nd, DATA_PATH, PARTITIONS)
+        return dataPart
+
+    def exactData(self, DIR, LINE):
+        graphInfo = json.loads(LINE.strip())
+        curCFG = CFG(DIR+'-'+graphInfo['Funcname'], graphInfo['Nodenum'])
+        for u in range(graphInfo['Nodenum']):
+            for v in graphInfo['CFG'][u]:
+                curCFG.AddDirectedEdgeCFG(u, v)
+            curCFG.literal[u]  = np.array(graphInfo['Literal'][u], dtype=object)
+            curCFG.semantic[u] = np.array(graphInfo['Semantic'][u], dtype=object)
+        curCFG = self.levelFlowGraph(curCFG)
+        return curCFG
+
+    def levelFlowGraph(self, CFG):
+        nodelevel = [-1]*CFG.nodeNum
+        level = 1
+        queue = [0]
+        nodelevel[0] = 0
+        while len(queue):
+            if nodelevel[queue[0]]>=level:
+                level+=1
+            for i in range(len(CFG.succsCFG[queue[0]])):
+                if nodelevel[CFG.succsCFG[queue[0]][i]] == -1:
+                    queue.append(CFG.succsCFG[queue[0]][i])
+                    nodelevel[CFG.succsCFG[queue[0]][i]] = level
+            del queue[0]
+        preLevel = [0]
+        nowLevel = []
+        for i in range(1,level):
+            for j in range(1,CFG.nodeNum):
+                if nodelevel[j] == i:
+                    for node in preLevel:
+                        CFG.AddDirectedEdgeLFG(j,node)
+                    nowLevel.append(j)
+            preLevel = nowLevel
+            nowLevel = []
+        return CFG
+
+    def clearData(self, DATA):
+        DATA.sort(key=lambda CFG:CFG.name)
+        i=0
+        while i<len(DATA)-1:
+            if DATA[i].name == DATA[i+1].name:
+                if DATA[i].IsSame(DATA[i+1]):
+                    DATA[i:]=DATA[i+1:]
+                else:    
+                    j=2
+                    while i+j < len(DATA) and DATA[i].name == DATA[i+j].name:
+                        j+=1
+                    DATA[i:]=DATA[i+j:]
+            else:
+                i+=1
+        return DATA
+
+    def matchFunction(self, DATA1ST, DATA2ND):
+        for i in range(len(DATA1ST)):
             j=0
-            while j < len(data1st[i]) and j < len(data2nd[i]):
-                if data1st[i][j].name==data2nd[i][j].name:
-                    if data2nd[i][j].nodeNum <= 50 and 0.5 <= data1st[i][j].nodeNum/data2nd[i][j].nodeNum <= 2:
+            while j < len(DATA1ST[i]) and j < len(DATA2ND[i]):
+                if DATA1ST[i][j].name==DATA2ND[i][j].name:
+                    if DATA2ND[i][j].nodeNum <= 50 and 0.5 <= DATA1ST[i][j].nodeNum/DATA2ND[i][j].nodeNum <= 2:
                         j+=1
                     else:
-                        data1st[i][j:]=data1st[i][j+1:]
-                        data2nd[i][j:]=data2nd[i][j+1:]
-                elif data1st[i][j].name < data2nd[i][j].name:
-                    data1st[i][j:]=data1st[i][j+1:]
+                        DATA1ST[i][j:]=DATA1ST[i][j+1:]
+                        DATA2ND[i][j:]=DATA2ND[i][j+1:]
+                elif DATA1ST[i][j].name < DATA2ND[i][j].name:
+                    DATA1ST[i][j:]=DATA1ST[i][j+1:]
                 else:
-                    data2nd[i][j:]=data2nd[i][j+1:]
-            if j < len(data1st[i]):
-                data1st[i][j:]=[]
-            if j < len(data2nd[i]):
-                data2nd[i][j:]=[]
-            print("{0} matched functions".format(len(data1st[i])))
+                    DATA2ND[i][j:]=DATA2ND[i][j+1:]
+            if j < len(DATA1ST[i]):
+                DATA1ST[i][j:]=[]
+            if j < len(DATA2ND[i]):
+                DATA2ND[i][j:]=[]
+            print("{0} matched functions".format(len(DATA1ST[i])))
+        return DATA1ST, DATA2ND
 
+    def partData(self, DATA1ST, DATA2ND, DATA_PATH, PARTITIONS):
         #Load perm file to use before data part
         dataPart1st = []
         dataPart2nd = []
-        for i in range(len(data1st)):
-            dataPart1st.extend(data1st[i])
-            dataPart2nd.extend(data2nd[i])
+        for i in range(len(DATA1ST)):
+            dataPart1st.extend(DATA1ST[i])
+            dataPart2nd.extend(DATA2ND[i])
         funcNum = len(dataPart1st)
         permPath = os.path.join(DATA_PATH,"perm.npy")
         if os.path.isfile(permPath):
@@ -93,7 +129,6 @@ class MyData():
         if len(perm) != funcNum:
             perm = np.random.permutation(funcNum)
             np.save(permPath, perm)
-        
         #Part Data
         start = 0.0
         dataPart = []
@@ -107,25 +142,25 @@ class MyData():
             dataPart.append(partData1st)
             dataPart.append(partData2nd)
             start = end
-
         return dataPart
 
+    #================================================================
     def GetTrainData(self,SELECT=0):
-        return self.GetTrainEpoch(self.rawData[SELECT*2],self.rawData[SELECT*2+1])
+        return self.getTrainEpoch(self.rawData[SELECT*2],self.rawData[SELECT*2+1])
 
-    def GetTrainEpoch(self, DATA1ST, DATA2ND):
+    def getTrainEpoch(self, DATA1ST, DATA2ND):
         start = 0
         pairs = []
         epochData = []
         funcNum = len(DATA1ST)
         while start < funcNum:
-            c1, p1, l1 ,s1 ,c2, p2, l2, s2, y, pair = self.GetTrainPair(DATA1ST, DATA2ND, START=start)
-            epochData.append((c1, p1, l1 ,s1 ,c2, p2, l2, s2, y))
+            c1, e1, l1 ,s1 ,c2, e2, l2, s2, y, pair = self.getTrainPair(DATA1ST, DATA2ND, START=start)
+            epochData.append((c1, e1, l1 ,s1 ,c2, e2, l2, s2, y))
             pairs += pair
             start += self.BatchSize
         return epochData,pairs
 
-    def GetTrainPair(self, DATA1ST, DATA2ND, START = -1):
+    def getTrainPair(self, DATA1ST, DATA2ND, START = -1):
         pairs = []
         maxNode1st = 0
         maxNode2nd = 0 
@@ -142,18 +177,18 @@ class MyData():
             #build negetive pair
             for i in range(self.BatchMultiple-1):
                 cls2 = np.random.randint(funcNum)
-                while cls2 == cls1:
+                while cls2 == cls1 or 0.8 < DATA1ST[cls1].nodeNum/DATA2ND[cls2].nodeNum < 1.25:
                     cls2 = np.random.randint(funcNum)
                 pairs.append((cls1,cls2))
                 maxNode2nd = max(maxNode2nd, DATA2ND[cls2].nodeNum)
 
         cfg1st = np.zeros((allPairNum, maxNode1st, maxNode1st))
-        pfg1st = np.zeros((allPairNum, maxNode1st, maxNode1st))
+        lfg1st = np.zeros((allPairNum, maxNode1st, maxNode1st))
         literal1st = np.zeros((allPairNum, maxNode1st, self.Literal1st))
         semantic1st = np.zeros((allPairNum, maxNode1st, self.Semantic1st))
 
         cfg2nd = np.zeros((allPairNum, maxNode2nd, maxNode2nd))
-        pfg2nd  = np.zeros((allPairNum, maxNode2nd, maxNode2nd))
+        lfg2nd  = np.zeros((allPairNum, maxNode2nd, maxNode2nd))
         literal2nd  = np.zeros((allPairNum, maxNode2nd, self.Literal2nd))
         semantic2nd  = np.zeros((allPairNum, maxNode2nd, self.Semantic2nd))
 
@@ -164,8 +199,8 @@ class MyData():
             for u in range(graph1st.nodeNum):
                 for v in graph1st.succsCFG[u]:
                     cfg1st[i, u, v] = 1
-                for v in graph1st.succsPFG[u]:
-                    pfg1st[i, u, v] = 1
+                for v in graph1st.succsLFG[u]:
+                    lfg1st[i, u, v] = 1
                 for l in range(len(graph1st.literal[u])):
                     literal1st[i, u, l] = graph1st.literal[u][l]
                 for w in range(len(graph1st.semantic[u])):
@@ -177,8 +212,8 @@ class MyData():
             for u in range(graph2nd.nodeNum):
                 for v in graph2nd.succsCFG[u]:
                     cfg2nd[i, u, v] = 1
-                for v in graph2nd.succsPFG[u]:
-                    pfg2nd[i, u, v] = 1
+                for v in graph2nd.succsLFG[u]:
+                    lfg2nd[i, u, v] = 1
                 for l in range(len(graph2nd.literal[u])):
                     literal2nd[i, u, l] = graph2nd.literal[u][l]
                 for w in range(len(graph2nd.semantic[u])):
@@ -191,12 +226,13 @@ class MyData():
             else:
                 yInput[i] = 0
 
-        return cfg1st,pfg1st,literal1st,semantic1st,cfg2nd,pfg2nd,literal2nd,semantic2nd,yInput,pairs
+        return cfg1st,lfg1st,literal1st,semantic1st,cfg2nd,lfg2nd,literal2nd,semantic2nd,yInput,pairs
 
+    #================================================================
     def GetTestData(self, SELECT=1, PAIRS=[]):
-        return self.GetTestEpoch(self.rawData[SELECT*2],self.rawData[SELECT*2+1],PAIRS)
+        return self.getTestEpoch(self.rawData[SELECT*2],self.rawData[SELECT*2+1],PAIRS)
 
-    def GetTestEpoch(self, DATA1ST, DATA2ND, PAIRS):
+    def getTestEpoch(self, DATA1ST, DATA2ND, PAIRS):
         pairs = []
         maxNode1st = 0
         maxNode2nd = 0 
@@ -224,12 +260,12 @@ class MyData():
 
         #construct data
         cfg1st = np.zeros((allPairNum, maxNode1st, maxNode1st))
-        pfg1st = np.zeros((allPairNum, maxNode1st, maxNode1st))
+        lfg1st = np.zeros((allPairNum, maxNode1st, maxNode1st))
         literal1st = np.zeros((allPairNum, maxNode1st, self.Literal1st))
         semantic1st = np.zeros((allPairNum, maxNode1st, self.Semantic1st))
 
         cfg2nd = np.zeros((allPairNum, maxNode2nd, maxNode2nd))
-        pfg2nd  = np.zeros((allPairNum, maxNode2nd, maxNode2nd))
+        lfg2nd  = np.zeros((allPairNum, maxNode2nd, maxNode2nd))
         literal2nd  = np.zeros((allPairNum, maxNode2nd, self.Literal2nd))
         semantic2nd  = np.zeros((allPairNum, maxNode2nd, self.Semantic2nd))
 
@@ -240,8 +276,8 @@ class MyData():
             for u in range(graph1st.nodeNum):
                 for v in graph1st.succsCFG[u]:
                     cfg1st[i, u, v] = 1
-                for v in graph1st.succsPFG[u]:
-                    pfg1st[i, u, v] = 1
+                for v in graph1st.succsLFG[u]:
+                    lfg1st[i, u, v] = 1
                 for l in range(len(graph1st.literal[u])):
                     literal1st[i, u, l] = graph1st.literal[u][l]
                 for w in range(len(graph1st.semantic[u])):
@@ -253,8 +289,8 @@ class MyData():
             for u in range(graph2nd.nodeNum):
                 for v in graph2nd.succsCFG[u]:
                     cfg2nd[i, u, v] = 1
-                for v in graph2nd.succsPFG[u]:
-                    pfg2nd[i, u, v] = 1
+                for v in graph2nd.succsLFG[u]:
+                    lfg2nd[i, u, v] = 1
                 for l in range(len(graph2nd.literal[u])):
                     literal2nd[i, u, l] = graph2nd.literal[u][l]
                 for w in range(len(graph2nd.semantic[u])):
@@ -267,9 +303,10 @@ class MyData():
             else:
                 yInput[i] = 0
 
-        epochData  = (cfg1st,pfg1st,literal1st,semantic1st,cfg2nd,pfg2nd,literal2nd,semantic2nd,yInput)
+        epochData  = (cfg1st,lfg1st,literal1st,semantic1st,cfg2nd,lfg2nd,literal2nd,semantic2nd,yInput)
         return epochData
-
+    
+    #================================================================
     def GetTopkEpoch(self, DATA1ST, DATA2ND):
         pairs = []
         maxNode1st = DATA1ST.nodeNum
@@ -279,12 +316,12 @@ class MyData():
             maxNode2nd = max(maxNode2nd, DATA2ND[i].nodeNum)
 
         cfg1st = np.zeros((allPairNum, maxNode1st, maxNode1st))
-        pfg1st = np.zeros((allPairNum, maxNode1st, maxNode1st))
+        lfg1st = np.zeros((allPairNum, maxNode1st, maxNode1st))
         literal1st = np.zeros((allPairNum, maxNode1st, self.Literal1st))
         semantic1st = np.zeros((allPairNum, maxNode1st, self.Semantic1st))
 
         cfg2nd = np.zeros((allPairNum, maxNode2nd, maxNode2nd))
-        pfg2nd  = np.zeros((allPairNum, maxNode2nd, maxNode2nd))
+        lfg2nd  = np.zeros((allPairNum, maxNode2nd, maxNode2nd))
         literal2nd  = np.zeros((allPairNum, maxNode2nd, self.Literal2nd))
         semantic2nd  = np.zeros((allPairNum, maxNode2nd, self.Semantic2nd))
 
@@ -293,8 +330,8 @@ class MyData():
             for u in range(graph1st.nodeNum):
                 for v in graph1st.succsCFG[u]:
                     cfg1st[i, u, v] = 1
-                for v in graph1st.succsPFG[u]:
-                    pfg1st[i, u, v] = 1
+                for v in graph1st.succsLFG[u]:
+                    lfg1st[i, u, v] = 1
                 for l in range(len(graph1st.literal[u])):
                     literal1st[i, u, l] = graph1st.literal[u][l]
                 for w in range(len(graph1st.semantic[u])):
@@ -306,8 +343,8 @@ class MyData():
             for u in range(graph2nd.nodeNum):
                 for v in graph2nd.succsCFG[u]:
                     cfg2nd[i, u, v] = 1
-                for v in graph2nd.succsPFG[u]:
-                    pfg2nd[i, u, v] = 1
+                for v in graph2nd.succsLFG[u]:
+                    lfg2nd[i, u, v] = 1
                 for l in range(len(graph2nd.literal[u])):
                     literal2nd[i, u, l] = graph2nd.literal[u][l]
                 for w in range(len(graph2nd.semantic[u])):
@@ -315,5 +352,5 @@ class MyData():
                         break
                     semantic2nd[i, u, w] = graph2nd.semantic[u][w]
 
-        epochData = (cfg1st,pfg1st,literal1st,semantic1st,cfg2nd,pfg2nd,literal2nd,semantic2nd)
+        epochData = (cfg1st,lfg1st,literal1st,semantic1st,cfg2nd,lfg2nd,literal2nd,semantic2nd)
         return epochData

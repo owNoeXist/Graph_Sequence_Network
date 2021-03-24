@@ -24,7 +24,7 @@ import train
 import GSN_parameters as param
 from GSN_data import MyData
 from GSN_model import GSN
-from PCFG import PCFG
+from CFG import CFG
 
 if __name__ == '__main__':
 
@@ -40,9 +40,12 @@ if __name__ == '__main__':
     trainData, pairs = datas.GetTrainData(SELECT=0)
     trainTest = datas.GetTestData(SELECT=0, PAIRS=pairs)
     validTest = datas.GetTestData(SELECT=1)
-    train.TrainModel(model,trainData,trainTest,validTest,param.ModelPath,param.TrainEpoch,param.TestFreq,param.SaveFreq,param.ResultPath)
     
     #model.load(param.ModelPath)
-
+    train.TrainModel(model,trainData,trainTest,validTest,param.ModelPath,param.TrainEpoch,param.TestFreq,param.SaveFreq,param.ResultPath)
+    
+    model.load(param.ModelPath,"_best")
+    #model.load(param.ModelPath)
     train.GetTopK(model, datas, param.ResultPath, SELECT=1, K=10)
+    #train.GetTopK(model, datas, param.ResultPath, SELECT=0, K=10)
     #train.MatchFunction(model, datas, param.ResultPath)
