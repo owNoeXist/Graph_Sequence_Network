@@ -1,6 +1,58 @@
+import json
 import matplotlib.pyplot as plt
+from matplotlib.pyplot import MultipleLocator
 #from sklearn.metrics import auc, roc_curve, precision_recall_curve
 #--------------------------------------Make result Visualized-----------------------------------
+def Draw_Top(FILE_PATH = None, RAW_JSON = None):
+    #Obtain data
+    if FILE_PATH != None:
+        file=open(FILE_PATH,'r')
+        serialNum = json.loads(file.readlines()[0])["SerialNum"]
+        file.close()
+    else:
+        serialNum = RAW_JSON["SerialNum"]
+    #Exact coordinates from data
+    dataNum = len(serialNum)
+    groupNum = int((dataNum-1)/10)+1
+    number = [0]*groupNum
+    for i in range(dataNum):
+        number[int((serialNum[i]-1)/10)]+=1
+    maxNum = 0
+    totalNum = 0
+    group = [0]*groupNum
+    totalPercent = [0]*groupNum
+    groupPercent = [0]*groupNum
+    for i in range(groupNum):
+        maxNum = max(maxNum,number[i])
+        group[i] = (i+1)*10
+        totalNum += number[i]
+        totalPercent[i] = totalNum/dataNum
+        groupPercent[i] = (i+1)/groupNum
+    #Initial drawing paper
+    plt.rcParams['figure.figsize'] = (12, 5)
+    graph=plt.subplot(1,2,1)
+    graph.set_title('Top Serial Number',fontsize=15)
+    graph.set_xlabel('Group',fontsize=10)
+    x_major_locator=MultipleLocator(0.1)
+    graph.xaxis.set_major_locator(x_major_locator)
+    graph.set_xlim(0,1)
+    graph.set_ylabel('Number', fontsize=10)
+    graph.set_ylim(0,maxNum)
+    graph.plot(groupPercent, number, color='red', linewidth=1, linestyle='-', label='')
+    graph=plt.subplot(1,2,2)
+    graph.set_title('Top Serial Number',fontsize=15)
+    graph.set_xlabel('Group',fontsize=10)
+    x_major_locator=MultipleLocator(0.1)
+    graph.xaxis.set_major_locator(x_major_locator)
+    graph.set_xlim(0,1)
+    graph.set_ylabel('Number', fontsize=10)
+    y_major_locator=MultipleLocator(0.1)
+    graph.yaxis.set_major_locator(y_major_locator)
+    graph.set_ylim(0,1)
+    graph.plot(groupPercent, totalPercent, color='red', linewidth=1, linestyle='-', label='')
+    plt.show()
+
+
 def DrawTrainLine(Result_PATH, RAW_JSON=None):
     if RAW_JSON == None:
         filePath=os.path.join(Result_PATH,"trainauc.txt")

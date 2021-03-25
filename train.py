@@ -31,25 +31,25 @@ def TrainModel(MODEL, TRAIN_DATA, TRAIN_TEST, VALID_TEST, MODEL_PATH, TRAIN_EPOC
     MODEL.saveResult(result, RESULT_PATH, FILE_NAME="trainLossAuc")
 
 #========================================================================
-def GetTopK(MODEL, DATAS, RESULT_PATH, SELECT = 0, K = 10):
-    result = {"Auc":0, "SerialNum":[]}
-    num = 0
-    sum = 0
-    for i in range(len(DATAS.rawData[SELECT*2])):
+def GetTopSim(MODEL, DATAS, RESULT_PATH, SELECT=0, K=0):
+    result = {"SerialNum":[]}
+    all = len(DATAS.rawData[SELECT*2])
+    for i in range(all):
         data = DATAS.GetTopkEpoch(DATAS.rawData[SELECT*2][i], DATAS.rawData[SELECT*2+1])
         label = MODEL.GetTopkLabel(data)
         betterNum = 1
-        for i in range(len(label)):
-            if label[i] > label[num]:
+        for j in range(all):
+            if label[j] > label[i]:
                 betterNum += 1
         result["SerialNum"].append(betterNum)
-        num+=1
-        if betterNum <= K:
-            sum+=1
-        print("{0}/{1} {2}".format(num,len(label),datetime.now()))
-    result["Auc"] = sum/num
-    print("sum/all:{0}/{1}".format(sum,num))
-    MODEL.saveResult(result, RESULT_PATH, FILE_NAME="topk")
+        print("{0}/{1} {2}".format(i, all, datetime.now()))
+    if K!=0:
+        num = 0
+        for i in range(all):
+            if result["SerialNum"][i] <= K:
+                num += 1
+        print("sum/all:{0}/{1}".format(num,all))
+    MODEL.saveResult(result, RESULT_PATH, FILE_NAME="TopSerial")
 
 #========================================================================
 def MatchFunction(MODEL, DATAS, RESULT_PATH):

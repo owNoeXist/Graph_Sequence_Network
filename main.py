@@ -34,8 +34,8 @@ if __name__ == '__main__':
     #model.load(param.ModelPath)
     train.TrainModel(model,trainData,trainTest,validTest,param.ModelPath,param.TrainEpoch,param.TestFreq,param.SaveFreq,param.ResultPath)
     
-    model.load(param.ModelPath,"_best")
+    #model.load(param.ModelPath,"_best")
     #model.load(param.ModelPath)
-    train.GetTopK(model, datas, param.ResultPath, SELECT=1, K=10)
+    train.GetTopSim(model, datas, param.ResultPath, SELECT=2, K=10)
     #train.GetTopK(model, datas, param.ResultPath, SELECT=0, K=10)
     #train.MatchFunction(model, datas, param.ResultPath)
