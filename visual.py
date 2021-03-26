@@ -1,9 +1,8 @@
 import json
 import matplotlib.pyplot as plt
-from matplotlib.pyplot import MultipleLocator
 #from sklearn.metrics import auc, roc_curve, precision_recall_curve
 #--------------------------------------Make result Visualized-----------------------------------
-def Draw_Top(FILE_PATH = None, RAW_JSON = None):
+def DrawTop(FILE_PATH = None, RAW_JSON = None):
     #Obtain data
     if FILE_PATH != None:
         file=open(FILE_PATH,'r')
@@ -33,7 +32,7 @@ def Draw_Top(FILE_PATH = None, RAW_JSON = None):
     graph=plt.subplot(1,2,1)
     graph.set_title('Top Serial Number',fontsize=15)
     graph.set_xlabel('Group',fontsize=10)
-    x_major_locator=MultipleLocator(0.1)
+    x_major_locator=plt.MultipleLocator(0.1)
     graph.xaxis.set_major_locator(x_major_locator)
     graph.set_xlim(0,1)
     graph.set_ylabel('Number', fontsize=10)
@@ -42,25 +41,24 @@ def Draw_Top(FILE_PATH = None, RAW_JSON = None):
     graph=plt.subplot(1,2,2)
     graph.set_title('Top Serial Number',fontsize=15)
     graph.set_xlabel('Group',fontsize=10)
-    x_major_locator=MultipleLocator(0.1)
+    x_major_locator=plt.MultipleLocator(0.1)
     graph.xaxis.set_major_locator(x_major_locator)
     graph.set_xlim(0,1)
     graph.set_ylabel('Number', fontsize=10)
-    y_major_locator=MultipleLocator(0.1)
+    y_major_locator=plt.MultipleLocator(0.1)
     graph.yaxis.set_major_locator(y_major_locator)
     graph.set_ylim(0,1)
     graph.plot(groupPercent, totalPercent, color='red', linewidth=1, linestyle='-', label='')
     plt.show()
 
-
-def DrawTrainLine(Result_PATH, RAW_JSON=None):
-    if RAW_JSON == None:
-        filePath=os.path.join(Result_PATH,"trainauc.txt")
-        file=open(filePath,'r')
-        graphInfo = json.loads(file.readlines().strip())
+def DrawTrainLine(FILE_PATH = None, RAW_JSON = None):
+    #Obtain data
+    if FILE_PATH != None:
+        file=open(FILE_PATH,'r')
+        trainRecord = json.loads(file.readlines()[0])
         file.close()
     else:
-        graphInfo = RAW_JSON
+        trainRecord = RAW_JSON
     #Initial drawing paper
     plt.rcParams['figure.figsize'] = (12, 5)
 	#Draw Loss Line
@@ -68,23 +66,23 @@ def DrawTrainLine(Result_PATH, RAW_JSON=None):
     graphAuc.grid(True,axis='y')
     graphAuc.set_title('Loss Graph',fontsize=15)
     graphAuc.set_xlabel('Step',fontsize=10)
-    graphAuc.set_xlim(0, len(graphInfo["TrainStep"])-1)
+    graphAuc.set_xlim(0, len(trainRecord["TrainStep"])-1)
     graphAuc.set_ylabel('Loss', fontsize=10)
     graphAuc.set_ylim(0,1)
-    graphAuc.plot(graphInfo["TrainStep"],graphInfo["TrainLoss"],color='red',linewidth=1,linestyle='-')
+    graphAuc.plot(trainRecord["TrainStep"],trainRecord["TrainLoss"],color='red',linewidth=1,linestyle='-')
     #Draw Auc Line
     graphAuc=plt.subplot(1,2,2)
     graphAuc.grid(True,axis='y')
     graphAuc.set_title('Auc Graph', fontsize=15)
     graphAuc.set_xlabel('Step', fontsize=10)
-    graphAuc.set_xlim(0, len(graphInfo["TrainStep"])-1)
+    graphAuc.set_xlim(0, len(trainRecord["TrainStep"])-1)
     graphAuc.set_ylabel('Auc', fontsize=10)
     graphAuc.set_ylim(0.8,1)
-    graphAuc.plot(graphInfo["TestStep"],graphInfo["TrainAuc"],color='red',linewidth=1,linestyle='-')
-    graphAuc.plot(graphInfo["TestStep"],graphInfo["ValidAuc"],color='green',linewidth=1,linestyle='-')
+    graphAuc.plot(trainRecord["TestStep"],trainRecord["TrainAuc"],color='red',linewidth=1,linestyle='-')
+    graphAuc.plot(trainRecord["TestStep"],trainRecord["ValidAuc"],color='green',linewidth=1,linestyle='-')
     plt.show()
 
-def Draw_Roc(Result_PATH, RAW_JSON=None):
+def DrawRoc(Result_PATH, RAW_JSON=None):
     if RAW_JSON == None:
         filePath=os.path.join(Result_PATH,"roc.txt")
         file=open(filePath,'r')
@@ -105,7 +103,7 @@ def Draw_Roc(Result_PATH, RAW_JSON=None):
     graphRoc.legend(loc='lower right')
     plt.show()
 
-def Draw_PR(Result_PATH, RAW_JSON=None):
+def DrawPR(Result_PATH, RAW_JSON=None):
     if RAW_JSON == None:
         filePath=os.path.join(Result_PATH,"pr.txt")
         file=open(filePath,'r')

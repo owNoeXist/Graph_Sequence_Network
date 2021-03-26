@@ -4,31 +4,41 @@ from datetime import datetime
 
 #========================================================================
 def TrainModel(MODEL, TRAIN_DATA, TRAIN_TEST, VALID_TEST, MODEL_PATH, TRAIN_EPOCH, TEST_FREQ, SAVE_FREQ, RESULT_PATH):
-    result = {"TrainStep":[],"TrainLoss":[],"TestStep":[],"TrainAuc":[],"ValidAuc":[]}
+    result = {"TrainStep":[],"TrainLoss":[],"ValidLoss":[],"TestStep":[],"TrainAuc":[],"ValidAuc":[]}
+    #Model initial state
+    trainLoss,trainAuc = MODEL.TestModel(TRAIN_TEST)
+    validLoss,validAuc = MODEL.TestModel(VALID_TEST)
+    result["TrainStep"].append(0)
+    result["TrainLoss"].append(trainLoss)
+    result["ValidLoss"].append(validLoss)
+    result["TestStep"].append(0)
+    result["TrainAuc"].append(trainAuc)
+    result["ValidAuc"].append(validAuc)
+    MODEL.say("Initial state = {}".format(result))
+    #Train by EPOCH
     bestAuc=0
-    for i in range(TRAIN_EPOCH+1):
-        if i > 0:
-            MODEL.say("EPOCH {0}/{1} @ {2}".format(i, TRAIN_EPOCH, datetime.now()))
-            #train for one epoch
-            loss = MODEL.TrainModel(TRAIN_DATA)
-            MODEL.say("Training loss= {}".format(loss))
-            result["TrainStep"].append(i)
-            result["TrainLoss"].append(float(loss))
+    for i in range(1,TRAIN_EPOCH+1):
+        MODEL.say("EPOCH {0}/{1} @ {2}".format(i, TRAIN_EPOCH, datetime.now()))
+        #train for one epoch
+        trainLoss = MODEL.TrainModel(TRAIN_DATA)
+        validLoss,validAuc = MODEL.TestModel(VALID_TEST)
+        result["TrainStep"].append(i)
+        result["TrainLoss"].append(trainLoss)
+        result["ValidLoss"].append(validLoss)
+        MODEL.say("Training Loss= {0}\nValidate Loss= {1}".format(trainLoss,validLoss))
         #test model
         if i % TEST_FREQ == 0:  
-            trainRocAuc = MODEL.TestModel(TRAIN_TEST)
-            MODEL.say("Training auc = {}".format(trainRocAuc))
-            validRocAuc = MODEL.TestModel(VALID_TEST)
-            MODEL.say("Validate auc = {}".format(validRocAuc))
+            _,trainAuc = MODEL.TestModel(TRAIN_TEST)
             result["TestStep"].append(i)
-            result["TrainAuc"].append(trainRocAuc)
-            result["ValidAuc"].append(validRocAuc)
-            if validRocAuc > bestAuc :
-                bestAuc = validRocAuc
+            result["TrainAuc"].append(trainAuc)
+            result["ValidAuc"].append(validAuc)
+            MODEL.say("Training Auc= {0}\nValidate Auc= {1}".format(trainAuc,validAuc))
+            if validAuc > bestAuc :
+                bestAuc = validAuc
                 MODEL.save(MODEL_PATH, NAME="_best")
         if i % SAVE_FREQ == 0:
             MODEL.save(MODEL_PATH)
-    MODEL.saveResult(result, RESULT_PATH, FILE_NAME="trainLossAuc")
+    MODEL.saveResult(result, RESULT_PATH, FILE_NAME="TrainLossAuc")
 
 #========================================================================
 def GetTopSim(MODEL, DATAS, RESULT_PATH, SELECT=0, K=0):
