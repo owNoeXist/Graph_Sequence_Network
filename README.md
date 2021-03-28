@@ -9,4 +9,4 @@ You can exact sample data by [PCFG_C_Flex](https://github.com/owNoeXist/PCFG_C_F
 ## How to run it
 These codes are based on Tensorflow2.4.
 
-The network based on LSTM and GAT.
+The network based on GRU and GAT.
