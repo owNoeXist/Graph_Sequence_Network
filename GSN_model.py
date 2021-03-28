@@ -9,7 +9,7 @@ from tensorflow.keras import layers,Model
 
 class GSN():
     def __init__(self, HYPER_PARAMETER, LOG_FILE):
-        self.model = MyModel(HYPER_PARAMETER)
+        self.model = Model(HYPER_PARAMETER)
         self.HyperParameter = HYPER_PARAMETER
         self.lossObject = tf.keras.losses.BinaryCrossentropy()
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=HYPER_PARAMETER['LearningRate'])
@@ -85,138 +85,124 @@ class GSN():
         label = list(self.model(c1, p1, l1 ,s1 ,c2, p2, l2, s2, TRAINING=False))
         return label
 
-class MyModel(Model):
+class Model(Model):
     def __init__(self, HYPER_PARAMETER):
-        self.CFGForwardTime = HYPER_PARAMETER['CFGForwardTime']
-        self.CFGReverseTime = HYPER_PARAMETER['CFGReverseTime']
+        super(Model, self).__init__()
+        self.CFGIteraTime = HYPER_PARAMETER['CFGIteraTime']
         self.LFGIteraTime = HYPER_PARAMETER['LFGIteraTime']
         self.EmbedDim = HYPER_PARAMETER['EmbedDim']
         self.DropoutRate = HYPER_PARAMETER['DropoutRate']
         self.OutputDim = HYPER_PARAMETER['OutputDim']
         
-        super(MyModel, self).__init__()
-        self.data1 = MyDataLayer(self.EmbedDim, self.DropoutRate)
-        self.data2 = MyDataLayer(self.EmbedDim, self.DropoutRate)
-        self.embed = MyGraphLayer(self.CFGForwardTime, self.CFGReverseTime, self.LFGIteraTime, self.EmbedDim,self.OutputDim, self.DropoutRate)
-        
+        self.data1 = DataLayer(self.EmbedDim, self.DropoutRate)
+        self.data2 = DataLayer(self.EmbedDim, self.DropoutRate)
+        self.embed = GraphLayer(self.CFGIteraTime, self.LFGIteraTime, self.EmbedDim,self.OutputDim, self.DropoutRate)
+        self.outputDense = layers.Dense(self.OutputDim)
+
     def call(self, CFG1ST, LFG1ST, LITERAL1ST, SEMANTIC1ST, CFG2ND, LFG2ND, LITERAL2ND, SEMANTIC2ND, TRAINING = True):
-        basicBlock1st = self.data1.call(LITERAL1ST, SEMANTIC1ST, TRAINING)
+        literal1st,semantic1st = self.data1.call(LITERAL1ST, SEMANTIC1ST, TRAINING)
         cfg1st = tf.cast(CFG1ST, tf.float32)
         lfg1st = tf.cast(LFG1ST, tf.float32)
-        embed1st = self.embed.call(basicBlock1st, cfg1st, lfg1st, TRAINING)
+        embed1st = self.embed.call(literal1st, semantic1st, cfg1st, lfg1st, TRAINING)
 
-        basicBlock2nd = self.data2.call(LITERAL2ND, SEMANTIC2ND, TRAINING)
+        literal1st,semantic2nd = self.data2.call(LITERAL2ND, SEMANTIC2ND, TRAINING)
         cfg2nd = tf.cast(CFG2ND, tf.float32)
         lfg2nd = tf.cast(LFG2ND, tf.float32)
-        embed2nd = self.embed.call(basicBlock2nd, cfg2nd, lfg2nd, TRAINING)
+        embed2nd = self.embed.call(literal1st, semantic2nd, cfg2nd, lfg2nd, TRAINING)
 
         cosin = tf.keras.losses.cosine_similarity(embed1st, embed2nd, axis=1)
         label = tf.divide(-tf.subtract(cosin,1),2)
 
         return label
 
-class MyDataLayer(layers.Layer):
+class DataLayer(layers.Layer):
     def __init__(self, EMBED_DIM, DROPOUT_RATE):
-        super(MyDataLayer, self).__init__()
+        super(DataLayer, self).__init__()
         self.EmbedDim = EMBED_DIM
-        self.HalfDim = int(EMBED_DIM/2)
         self.DropoutRate = DROPOUT_RATE
 
-        self.Dense = layers.Dense(self.HalfDim,activation='relu',use_bias=False)
-        self.DenseDropout = layers.Dropout(self.DropoutRate)
-        self.GRU = layers.GRU(self.HalfDim, activation='tanh', return_sequences=True, return_state=True, dropout=self.DropoutRate)
+        self.literalDense = layers.Dense(self.EmbedDim,activation=None,use_bias=False)
+        self.semanticGRU = layers.GRU(self.EmbedDim, activation='tanh', dropout=self.DropoutRate)
     
     def call(self, LITERAL, SEMANTIC, TRAINING = True):
-        literal = self.DenseDropout(self.Dense(LITERAL), training=TRAINING)
-        sematic,fs = self.GRU(SEMANTIC, training=TRAINING)
-        #output: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
-        output = tf.concat([literal,sematic],-1)
-        return output
+        #literal: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
+        literal = self.literalDense(LITERAL)
+        #sematic: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
+        semantic= self.semanticGRU(SEMANTIC, training=TRAINING)
+        return literal,semantic
 
-class MyGraphLayer(layers.Layer):
-    def __init__(self, CFG_FORWARD_TIME, CFG_REVERSE_TIME, LFG_ITERA_TIME, EMBED_DIM, OUTPUT_DIM, DROPOUT_RATE):
-        super(MyGraphLayer, self).__init__()
-        self.CFGForwardTime = CFG_FORWARD_TIME
-        self.CFGReverseTime = CFG_REVERSE_TIME
+class GraphLayer(layers.Layer):
+    def __init__(self, CFG_ITERA_TIME, LFG_ITERA_TIME, EMBED_DIM, OUTPUT_DIM, DROPOUT_RATE):
+        super(GraphLayer, self).__init__()
+        self.CFGIteraTime = CFG_ITERA_TIME
         self.LFGIteraTime = LFG_ITERA_TIME
+        self.EmbedDim = EMBED_DIM
+        self.OutputDim = OUTPUT_DIM
         self.DropoutRate = DROPOUT_RATE
         
-        self.CFGAttention = MyAttentionLayer(EMBED_DIM, DROPOUT_RATE)
-        self.weightDense = layers.Dense(EMBED_DIM, use_bias=False)
-        self.Dropout = layers.Dropout(self.DropoutRate)
-        self.outputDense = layers.Dense(OUTPUT_DIM)
+        self.cfgAttention = AttentionLayer()
+        self.lfgAttention = AttentionLayer()
+        self.MLPs = []
+        self.MLPs.append(layers.Dense(self.EmbedDim, activation='relu', use_bias=False))
+        self.MLPs.append(layers.Dense(self.EmbedDim, use_bias=False))
+        self.outputDense = layers.Dense(self.OutputDim)
+        #self.Dropout = layers.Dropout(self.DropoutRate)
     
-    def call(self, INPUT, CFG, LFG, TRAINING = True):
+    def call(self, LITERAL, SEMANTIC, CFG, LFG, TRAINING = True):
         #Embedding by cfg
-        #cfgForwardEmbed: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
-        cfgForwardEmbed = tf.nn.relu(INPUT)
-        for _ in range(self.CFGForwardTime):
+        #cfgEmbed: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
+        cfgEmbed = tf.nn.relu(LITERAL)
+        for _ in range(self.CFGIteraTime):
             #Update attention
             #attention: [BATCH_SIZE, NODE_NUM, NODE_NUM]
-            attention = self.CFGAttention(cfgForwardEmbed, CFG)
-            attention = tf.multiply(attention,CFG)
+            attention = self.cfgAttention(cfgEmbed, CFG)
             #Message pass
-            #transMid: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
-            transMid = self.weightDense(cfgForwardEmbed)
-            transMid = tf.matmul(attention, transMid)
-            transMid = self.Dropout(transMid, training=TRAINING)
+            cfgEmbed = tf.matmul(attention, cfgEmbed)
+            for mlp in self.MLPs:
+                cfgEmbed = mlp(cfgEmbed)
+            #transMid = self.Dropout(transMid, training=TRAINING)
             #Adding and Nonlinearity
-            cfgForwardEmbed = tf.nn.elu(cfgForwardEmbed + transMid)
-        
-        #Embedding by reversed cfg
-        #cfgReverseEmbed: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
-        cfgReverseEmbed = tf.nn.relu(INPUT)
-        CFGReverse = np.transpose(CFG,(0,2,1))
-        for _ in range(self.CFGReverseTime):
-            #Update attention
-            #attention: [BATCH_SIZE, NODE_NUM, NODE_NUM]
-            attention = self.CFGAttention(cfgReverseEmbed, CFGReverse)
-            attention = tf.multiply(attention,CFGReverse)
-            #Message pass
-            #transMid: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
-            transMid = self.weightDense(cfgReverseEmbed)
-            transMid = tf.matmul(attention, transMid)
-            transMid = self.Dropout(transMid, training=TRAINING)
-            #Adding and Nonlinearity
-            cfgReverseEmbed = tf.nn.elu(cfgReverseEmbed + transMid)
-        '''
+            cfgEmbed = tf.nn.tanh(LITERAL + cfgEmbed)
         #Embedding by lfg
-        lfgEmbed = tf.nn.relu(INPUT)
+        #lfgEmbed: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
+        lfgEmbed = tf.nn.relu(LITERAL)
         for _ in range(self.LFGIteraTime):
-            #Message convey
-            transMid = tf.matmul(LFG, lfgEmbed)
-            #Weight calculation
-            for dense in self.mlpLFG:
-                transMid = dense(transMid)
+            #Update attention
+            #attention: [BATCH_SIZE, NODE_NUM, NODE_NUM]
+            attention = self.lfgAttention(lfgEmbed, LFG)
+            #Message pass
+            lfgEmbed = tf.matmul(attention, lfgEmbed)
+            for mlp in self.MLPs:
+                lfgEmbed = mlp(lfgEmbed)
+            #transMid = self.Dropout(transMid, training=TRAINING)
             #Adding and Nonlinearity
-            lfgEmbed = tf.nn.tanh(lfgEmbed + transMid)
-        
-        #dropOutput = self.Dropout(cfgForwardEmbed+cfgReverseEmbed)
-        '''
-        #midOutput: [BATCH_SIZE, EMBED_DIM]
-        midOutput = tf.reduce_sum(cfgForwardEmbed+cfgReverseEmbed, 1)
+            lfgEmbed = tf.nn.tanh(LITERAL + lfgEmbed)
+        #Combine Embedding
+        #output: [BATCH_SIZE, EMBED_DIM]
+        midOutput = tf.reduce_sum(tf.concat([cfgEmbed,lfgEmbed],-1), 1)
+        midOutput = tf.concat([midOutput,SEMANTIC],-1)
         output = self.outputDense(midOutput)
-    
         return output
 
-class MyAttentionLayer(layers.Layer):
-  def __init__(self, EMBED_DIM, DROPOUT_RATE):    
-    super(MyAttentionLayer,self).__init__()    
-    self.EmbedDim = EMBED_DIM
-    self.aWeightDense1 = layers.Dense(1)
-    self.aWeightDense2 = layers.Dense(1) 
+class AttentionLayer(layers.Layer):
+  def __init__(self):    
+    super(AttentionLayer,self).__init__()
+    self.aWeight1 = layers.Dense(1)
+    self.aWeight2 = layers.Dense(1) 
     
-  def __call__(self, INPUT, GRAPH):
+  def __call__(self, FEATURE, GRAPH):
     #wh: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
-    wh = INPUT
+    wh = FEATURE
     #ah1: [BATCH_SIZE, NODE_NUM, 1]
-    ah1 = self.aWeightDense1(wh)
+    ah1 = self.aWeight1(wh)
     #ah2: [BATCH_SIZE, NODE_NUM, 1]
-    ah2 = self.aWeightDense2(wh)
+    ah2 = self.aWeight2(wh)
     #eij: [BATCH_SIZE, NODE_NUM, NODE_NUM]
     eij = ah1 + tf.transpose(ah2,[0,2,1])
-    # aij: [BATCH_SIZE, NODE_NUM, NODE_NUM]
+    #aij: [BATCH_SIZE, NODE_NUM, NODE_NUM]
     eGraph = tf.subtract(tf.multiply(GRAPH,1e20),1e20)
     aij = tf.nn.softmax(tf.nn.leaky_relu(eij)+eGraph)
+    #Reduce Calculate
+    aij = tf.multiply(aij,GRAPH)
 
     return aij

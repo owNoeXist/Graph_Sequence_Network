@@ -30,7 +30,6 @@ class CFG(object):
         if self.name == CFG_CMP.name and \
              self.nodeNum == CFG_CMP.nodeNum and \
                  self.succsCFG == CFG_CMP.succsCFG and \
-                     len(self.literal[0])  == len(CFG_CMP.literal[1]) and \
-                         len(self.semantic[0]) == len(CFG_CMP.semantic[0]):
-                         return True
+                     len(self.literal[0])  == len(CFG_CMP.literal[0]):
+                     return True
         return False
