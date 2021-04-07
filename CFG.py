@@ -6,25 +6,18 @@ class CFG(object):
         self.nodeNum  = nodenum
         self.succsCFG = []
         self.predsCFG = []
-        self.succsLFG = []
-        self.predsLFG = []
+        self.nodeLevel = []
         self.literal  = []
         self.semantic = []
         for i in range(nodenum):
             self.succsCFG.append([])
             self.predsCFG.append([])
-            self.succsLFG.append([])
-            self.predsLFG.append([])
             self.literal.append([])
             self.semantic.append([])
 
     def AddDirectedEdgeCFG(self, u, v):
         self.succsCFG[u].append(v)
         self.predsCFG[v].append(u)
-
-    def AddDirectedEdgeLFG(self, u, v):
-        self.succsLFG[u].append(v)
-        self.predsLFG[v].append(u)
 
     def IsSame(self, CFG_CMP):
         if self.name == CFG_CMP.name and \

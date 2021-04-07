@@ -6,8 +6,10 @@ from CFG import CFG
 
 class GSNData():
     def __init__(self, HYPER_PARAMETER, DATA_PATH, PARTITIONS):
+        self.File1st = HYPER_PARAMETER['File1st']
         self.Literal1st = HYPER_PARAMETER['Literal1st']
         self.Semantic1st = HYPER_PARAMETER['Semantic1st']
+        self.File2nd = HYPER_PARAMETER['File2nd']
         self.Literal2nd = HYPER_PARAMETER['Literal2nd']
         self.Semantic2nd = HYPER_PARAMETER['Semantic2nd']
         self.BatchSize = HYPER_PARAMETER['BatchSize']
@@ -24,17 +26,19 @@ class GSNData():
             if not os.path.isdir(programPath):
                 continue
             for file in os.listdir(programPath):
+                if file not in [self.File1st,self.File2nd]:
+                    continue
                 data = []
                 filePath = os.path.join(programPath,file)
                 with open(filePath) as lines:
                     for line in lines:
                         data.append(self.exactData(dir, line))
                 data = self.clearData(data)
-                if file not in ['DataC.json']:
+                if file in [self.File1st]:
                     data1st.append(data)
                 else:
                     data2nd.append(data)
-            print("{0}:\t{1} X86 functions, {2} C functions".format(dir,len(data1st[-1]),len(data2nd[-1])))
+            print("{0}:\t{1} {2} functions, {3} {4} functions".format(dir,len(data1st[-1]),self.File1st,len(data2nd[-1]),self.File2nd))
         data1st, data2nd = self.matchFunction(data1st, data2nd)
         dataPart = self.partData(data1st, data2nd, DATA_PATH, PARTITIONS)
         return dataPart
@@ -63,6 +67,7 @@ class GSNData():
                     queue.append(CFG.succsCFG[queue[0]][i])
                     nodelevel[CFG.succsCFG[queue[0]][i]] = level
             del queue[0]
+        '''
         preLevel = [0]
         nowLevel = []
         for i in range(1,level):
@@ -73,6 +78,8 @@ class GSNData():
                     nowLevel.append(j)
             preLevel = nowLevel
             nowLevel = []
+        '''
+        CFG.nodeLevel = nodelevel
         return CFG
 
     def clearData(self, DATA):
@@ -121,6 +128,7 @@ class GSNData():
             dataPart1st.extend(DATA1ST[i])
             dataPart2nd.extend(DATA2ND[i])
         funcNum = len(dataPart1st)
+        print("{0} all matched functions".format(funcNum))
         permPath = os.path.join(DATA_PATH,"perm.npy")
         if os.path.isfile(permPath):
             perm = np.load(permPath)
@@ -200,8 +208,9 @@ class GSNData():
             for u in range(graph1st.nodeNum):
                 for v in graph1st.succsCFG[u]:
                     cfg1st[i, u, v] = 1
-                for v in graph1st.succsLFG[u]:
-                    lfg1st[i, u, v] = 1
+                for v in range(graph1st.nodeNum):
+                    if graph1st.nodeLevel[u] - graph1st.nodeLevel[v] == 1:
+                        lfg1st[i, u, v] = 1
                 for l in range(len(graph1st.literal[u])):
                     literal1st[i, u, l] = graph1st.literal[u][l]
                 for w in range(len(graph1st.semantic[u])):
@@ -213,8 +222,9 @@ class GSNData():
             for u in range(graph2nd.nodeNum):
                 for v in graph2nd.succsCFG[u]:
                     cfg2nd[i, u, v] = 1
-                for v in graph2nd.succsLFG[u]:
-                    lfg2nd[i, u, v] = 1
+                for v in range(graph2nd.nodeNum):
+                    if graph2nd.nodeLevel[u] - graph2nd.nodeLevel[v] == 1:
+                        lfg2nd[i, u, v] = 1
                 for l in range(len(graph2nd.literal[u])):
                     literal2nd[i, u, l] = graph2nd.literal[u][l]
                 for w in range(len(graph2nd.semantic[u])):
@@ -277,8 +287,9 @@ class GSNData():
             for u in range(graph1st.nodeNum):
                 for v in graph1st.succsCFG[u]:
                     cfg1st[i, u, v] = 1
-                for v in graph1st.succsLFG[u]:
-                    lfg1st[i, u, v] = 1
+                for v in range(graph1st.nodeNum):
+                    if graph1st.nodeLevel[u] - graph1st.nodeLevel[v] == 1:
+                        lfg1st[i, u, v] = 1
                 for l in range(len(graph1st.literal[u])):
                     literal1st[i, u, l] = graph1st.literal[u][l]
                 for w in range(len(graph1st.semantic[u])):
@@ -290,8 +301,9 @@ class GSNData():
             for u in range(graph2nd.nodeNum):
                 for v in graph2nd.succsCFG[u]:
                     cfg2nd[i, u, v] = 1
-                for v in graph2nd.succsLFG[u]:
-                    lfg2nd[i, u, v] = 1
+                for v in range(graph2nd.nodeNum):
+                    if graph2nd.nodeLevel[u] - graph2nd.nodeLevel[v] == 1:
+                        lfg2nd[i, u, v] = 1
                 for l in range(len(graph2nd.literal[u])):
                     literal2nd[i, u, l] = graph2nd.literal[u][l]
                 for w in range(len(graph2nd.semantic[u])):
@@ -308,7 +320,7 @@ class GSNData():
         return epochData
     
     #================================================================
-    def GetTopkEpoch(self, DATA1ST, DATA2ND):
+    def GetOneFuncEpoch(self, DATA1ST, DATA2ND):
         pairs = []
         maxNode1st = DATA1ST.nodeNum
         allPairNum = len(DATA2ND)
@@ -331,8 +343,9 @@ class GSNData():
             for u in range(graph1st.nodeNum):
                 for v in graph1st.succsCFG[u]:
                     cfg1st[i, u, v] = 1
-                for v in graph1st.succsLFG[u]:
-                    lfg1st[i, u, v] = 1
+                for v in range(graph1st.nodeNum):
+                    if graph1st.nodeLevel[u] - graph1st.nodeLevel[v] == 1:
+                        lfg1st[i, u, v] = 1
                 for l in range(len(graph1st.literal[u])):
                     literal1st[i, u, l] = graph1st.literal[u][l]
                 for w in range(len(graph1st.semantic[u])):
@@ -344,8 +357,9 @@ class GSNData():
             for u in range(graph2nd.nodeNum):
                 for v in graph2nd.succsCFG[u]:
                     cfg2nd[i, u, v] = 1
-                for v in graph2nd.succsLFG[u]:
-                    lfg2nd[i, u, v] = 1
+                for v in range(graph2nd.nodeNum):
+                    if graph2nd.nodeLevel[u] - graph2nd.nodeLevel[v] == 1:
+                        lfg2nd[i, u, v] = 1
                 for l in range(len(graph2nd.literal[u])):
                     literal2nd[i, u, l] = graph2nd.literal[u][l]
                 for w in range(len(graph2nd.semantic[u])):

@@ -80,7 +80,7 @@ class GSN():
         auc = float(testMethod.result().numpy())
         return loss,auc
 
-    def GetTopkLabel(self, DATA):
+    def GetLabel(self, DATA):
         c1, p1, l1 ,s1 ,c2, p2, l2, s2  = DATA
         label = list(self.model(c1, p1, l1 ,s1 ,c2, p2, l2, s2, TRAINING=False))
         return label
@@ -97,18 +97,17 @@ class Model(Model):
         self.data1 = DataLayer(self.EmbedDim, self.DropoutRate)
         self.data2 = DataLayer(self.EmbedDim, self.DropoutRate)
         self.embed = GraphLayer(self.CFGIteraTime, self.LFGIteraTime, self.EmbedDim,self.OutputDim, self.DropoutRate)
-        self.outputDense = layers.Dense(self.OutputDim)
 
     def call(self, CFG1ST, LFG1ST, LITERAL1ST, SEMANTIC1ST, CFG2ND, LFG2ND, LITERAL2ND, SEMANTIC2ND, TRAINING = True):
-        literal1st,semantic1st = self.data1.call(LITERAL1ST, SEMANTIC1ST, TRAINING)
+        feature1st = self.data1.call(LITERAL1ST, SEMANTIC1ST, TRAINING)
         cfg1st = tf.cast(CFG1ST, tf.float32)
         lfg1st = tf.cast(LFG1ST, tf.float32)
-        embed1st = self.embed.call(literal1st, semantic1st, cfg1st, lfg1st, TRAINING)
+        embed1st = self.embed.call(feature1st, cfg1st, lfg1st, TRAINING)
 
-        literal1st,semantic2nd = self.data2.call(LITERAL2ND, SEMANTIC2ND, TRAINING)
+        feature2nd = self.data2.call(LITERAL2ND, SEMANTIC2ND, TRAINING)
         cfg2nd = tf.cast(CFG2ND, tf.float32)
         lfg2nd = tf.cast(LFG2ND, tf.float32)
-        embed2nd = self.embed.call(literal1st, semantic2nd, cfg2nd, lfg2nd, TRAINING)
+        embed2nd = self.embed.call(feature2nd, cfg2nd, lfg2nd, TRAINING)
 
         cosin = tf.keras.losses.cosine_similarity(embed1st, embed2nd, axis=1)
         label = tf.divide(-tf.subtract(cosin,1),2)
@@ -121,15 +120,16 @@ class DataLayer(layers.Layer):
         self.EmbedDim = EMBED_DIM
         self.DropoutRate = DROPOUT_RATE
 
+        self.semanticGRU = layers.GRU(1, dropout=self.DropoutRate, return_sequences=True, return_state=True)
         self.literalDense = layers.Dense(self.EmbedDim,activation=None,use_bias=False)
-        self.semanticGRU = layers.GRU(self.EmbedDim, activation='tanh', dropout=self.DropoutRate)
     
     def call(self, LITERAL, SEMANTIC, TRAINING = True):
-        #literal: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
-        literal = self.literalDense(LITERAL)
         #sematic: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
-        semantic= self.semanticGRU(SEMANTIC, training=TRAINING)
-        return literal,semantic
+        semantic,_= self.semanticGRU(SEMANTIC, training=TRAINING)
+        LITERAL = tf.concat([LITERAL,semantic],-1)
+        #literal: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
+        literal = tf.nn.relu(self.literalDense(LITERAL))
+        return literal
 
 class GraphLayer(layers.Layer):
     def __init__(self, CFG_ITERA_TIME, LFG_ITERA_TIME, EMBED_DIM, OUTPUT_DIM, DROPOUT_RATE):
@@ -146,12 +146,11 @@ class GraphLayer(layers.Layer):
         self.MLPs.append(layers.Dense(self.EmbedDim, activation='relu', use_bias=False))
         self.MLPs.append(layers.Dense(self.EmbedDim, use_bias=False))
         self.outputDense = layers.Dense(self.OutputDim)
-        #self.Dropout = layers.Dropout(self.DropoutRate)
     
-    def call(self, LITERAL, SEMANTIC, CFG, LFG, TRAINING = True):
+    def call(self, FEATURE, CFG, LFG, TRAINING = True):
         #Embedding by cfg
         #cfgEmbed: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
-        cfgEmbed = tf.nn.relu(LITERAL)
+        cfgEmbed = tf.nn.tanh(FEATURE)
         for _ in range(self.CFGIteraTime):
             #Update attention
             #attention: [BATCH_SIZE, NODE_NUM, NODE_NUM]
@@ -160,12 +159,11 @@ class GraphLayer(layers.Layer):
             cfgEmbed = tf.matmul(attention, cfgEmbed)
             for mlp in self.MLPs:
                 cfgEmbed = mlp(cfgEmbed)
-            #transMid = self.Dropout(transMid, training=TRAINING)
             #Adding and Nonlinearity
-            cfgEmbed = tf.nn.tanh(LITERAL + cfgEmbed)
+            cfgEmbed = tf.nn.tanh(FEATURE + cfgEmbed)
         #Embedding by lfg
         #lfgEmbed: [BATCH_SIZE, NODE_NUM, EMBED_DIM]
-        lfgEmbed = tf.nn.relu(LITERAL)
+        lfgEmbed = tf.nn.tanh(FEATURE)
         for _ in range(self.LFGIteraTime):
             #Update attention
             #attention: [BATCH_SIZE, NODE_NUM, NODE_NUM]
@@ -174,13 +172,11 @@ class GraphLayer(layers.Layer):
             lfgEmbed = tf.matmul(attention, lfgEmbed)
             for mlp in self.MLPs:
                 lfgEmbed = mlp(lfgEmbed)
-            #transMid = self.Dropout(transMid, training=TRAINING)
             #Adding and Nonlinearity
-            lfgEmbed = tf.nn.tanh(LITERAL + lfgEmbed)
+            lfgEmbed = tf.nn.tanh(FEATURE + lfgEmbed)
         #Combine Embedding
         #output: [BATCH_SIZE, EMBED_DIM]
         midOutput = tf.reduce_sum(tf.concat([cfgEmbed,lfgEmbed],-1), 1)
-        midOutput = tf.concat([midOutput,SEMANTIC],-1)
         output = self.outputDense(midOutput)
         return output
 
@@ -204,5 +200,4 @@ class AttentionLayer(layers.Layer):
     aij = tf.nn.softmax(tf.nn.leaky_relu(eij)+eGraph)
     #Reduce Calculate
     aij = tf.multiply(aij,GRAPH)
-
     return aij

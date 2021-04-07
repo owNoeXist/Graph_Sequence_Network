@@ -25,17 +25,16 @@ if __name__ == '__main__':
     
     datas = GSNData(param.Hyper,param.DataPath,param.Partitions)
     model = GSN(param.Hyper, param.LogPath)
+    #model.load(param.ModelPath)
 
     trainData, pairs = datas.GetTrainData(SELECT=0)
     trainTest = datas.GetTestData(SELECT=0, PAIRS=pairs)
     validTest = datas.GetTestData(SELECT=1)
     
-    #model.load(param.ModelPath)
     train.TrainModel(model,trainData,trainTest,validTest,param.ModelPath,param.TrainEpoch,param.TestFreq,param.SaveFreq,param.ResultPath)
     
     #model.load(param.ModelPath)
     model.load(param.ModelPath,"_best")
     train.GetTopSim(model, datas, param.ResultPath, SELECT=2, K=10)
-    #train.GetTopSim(model, datas, param.ResultPath, SELECT=0, K=10)
 
-    #train.MatchFunction(model, datas, param.ResultPath)
+    #train.MatchFunction(model, datas, param.ResultPath, SELECT=2)
