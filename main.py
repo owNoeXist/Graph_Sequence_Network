@@ -31,10 +31,12 @@ if __name__ == '__main__':
     trainTest = datas.GetTestData(SELECT=0, PAIRS=pairs)
     validTest = datas.GetTestData(SELECT=1)
     
-    train.TrainModel(model,trainData,trainTest,validTest,param.ModelPath,param.TrainEpoch,param.TestFreq,param.SaveFreq,param.ResultPath)
+    #train.TrainModel(model,trainData,trainTest,validTest,param.ModelPath,param.TrainEpoch,param.TestFreq,param.SaveFreq,param.ResultPath)
     
     #model.load(param.ModelPath)
     model.load(param.ModelPath,"_best")
-    train.GetTopSim(model, datas, param.ResultPath, SELECT=2, K=10)
 
-    #train.MatchFunction(model, datas, param.ResultPath, SELECT=2)
+    #train.GetRoc(model,param.ResultPath,TRAIN_DATAS=trainTest,VALID_DATAS=validTest)
+    #train.GetTopSim(model, datas, param.ResultPath, SELECT=2, K=1)
+    train.MatchFunction(model, datas, param.ResultPath, SELECT=2)
+    #train.MatchFunctionTest(model, datas, param.ResultPath, SELECT=2)

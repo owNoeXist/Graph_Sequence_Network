@@ -6,6 +6,7 @@ import tensorflow as tf
 
 from datetime import datetime
 from tensorflow.keras import layers,Model
+from sklearn.metrics import auc, roc_curve
 
 class GSN():
     def __init__(self, HYPER_PARAMETER, LOG_FILE):
@@ -64,9 +65,7 @@ class GSN():
 
         return loss
 
-    def TestModel(self, EPOCH_DATA):
-        lossMethod = tf.keras.losses.BinaryCrossentropy()
-        testMethod = tf.keras.metrics.AUC()
+    def TestModel(self, EPOCH_DATA, SAVE=False):
         c1, p1, l1 ,s1 ,c2, p2, l2, s2, y  = EPOCH_DATA
         predictions = []
         start = 0
@@ -75,10 +74,17 @@ class GSN():
             end = min(start+2000,pairNum)
             predictions += list(self.model(c1[start:end], p1[start:end], l1[start:end], s1[start:end], c2[start:end], p2[start:end], l2[start:end], s2[start:end], TRAINING=False))
             start = end
-        loss = float(lossMethod(y, predictions))
-        testMethod.update_state(y, predictions)
-        auc = float(testMethod.result().numpy())
-        return loss,auc
+        if SAVE==True:
+            fpr, tpr, rocThres = roc_curve(y, predictions)
+            rocAuc = auc(fpr,tpr)
+            return fpr.tolist(),tpr.tolist(),rocAuc
+        else:
+            lossMethod = tf.keras.losses.BinaryCrossentropy()
+            testMethod = tf.keras.metrics.AUC()
+            loss = float(lossMethod(y, predictions))
+            testMethod.update_state(y, predictions)
+            rocAuc = float(testMethod.result().numpy())
+            return loss,rocAuc
 
     def GetLabel(self, DATA):
         c1, p1, l1 ,s1 ,c2, p2, l2, s2  = DATA
@@ -110,7 +116,7 @@ class Model(Model):
         embed2nd = self.embed.call(feature2nd, cfg2nd, lfg2nd, TRAINING)
 
         cosin = tf.keras.losses.cosine_similarity(embed1st, embed2nd, axis=1)
-        label = tf.divide(-tf.subtract(cosin,1),2)
+        label = tf.math.divide_no_nan(-tf.subtract(cosin,1),2)
 
         return label
 

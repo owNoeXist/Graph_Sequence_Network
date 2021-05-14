@@ -42,6 +42,15 @@ def TrainModel(MODEL, TRAIN_DATA, TRAIN_TEST, VALID_TEST, MODEL_PATH, TRAIN_EPOC
     MODEL.saveResult(result, RESULT_PATH, FILE_NAME="TrainLossAuc")
 
 #========================================================================
+def GetRoc(MODEL, RESULT_PATH, TRAIN_DATAS=None, VALID_DATAS=None):
+    result = {}
+    if TRAIN_DATAS!=None:
+        result['TrainFpr'],result['TrainTpr'],result['TrainAuc'] = MODEL.TestModel(TRAIN_DATAS,SAVE=True)
+    if VALID_DATAS!=None:
+        result['ValidFpr'],result['ValidTpr'],result['ValidAuc'] = MODEL.TestModel(VALID_DATAS,SAVE=True)
+    MODEL.saveResult(result, RESULT_PATH, FILE_NAME="RocAuc")
+
+#========================================================================
 def GetTopSim(MODEL, DATAS, RESULT_PATH, SELECT=0, K=0):
     result = {"SerialNum":[],"FuncName":[],"TopSimName":[]}
     funcNum = len(DATAS.rawData[SELECT*2])
@@ -137,3 +146,66 @@ def updateDistance(MATCHED,ALLSORT,DISTANCE):
                 if MATCHED[ALLSORT[i][second][1]] == 0:
                     break
             DISTANCE[i]=[ALLSORT[i][frist][0]-ALLSORT[i][second][0],ALLSORT[i][frist][1],ALLSORT[i][second][1]]
+
+
+def MatchFunctionTest(MODEL, DATAS, RESULT_PATH, SELECT=0):
+    result = {"MatchNum":[],"FuncName":[]}
+    #Get all label
+    allLabel = []
+    funcNum = len(DATAS.rawData[SELECT*2])
+    for i in tqdm(range(funcNum),desc='MatchFunction',unit='func'):
+        data = DATAS.GetOneFuncEpoch(DATAS.rawData[SELECT*2][i],DATAS.rawData[SELECT*2+1])
+        label = MODEL.GetLabel(data)
+        allLabel.append(label)
+        result["FuncName"].append(DATAS.rawData[SELECT*2][i].name)
+    result["MatchNum"] = matchFuncTest(allLabel)
+    '''
+    #Calculate auc
+    matched=0
+    for value in result["MatchNum"]:
+        if value[0]==value[1]:
+            matched+=1
+    result["Auc"] = matched/funcNum
+    print("{0}/{1}".format(matched,funcNum))
+    MODEL.saveResult(result, RESULT_PATH, FILE_NAME="Match")
+    '''
+
+def matchFuncTest(ALL_LABEL):
+    funcNum = len(ALL_LABEL)
+
+    numSet = []
+    valueSet = []
+    allSort = []
+    for i in range(funcNum):
+        sortList = labelSort(ALL_LABEL[i])
+        allSort.append(sortList)
+        
+        mergeSet = []
+        setNum = len(valueSet)
+        for i in range(setNum):
+            for j in range(3):
+                if sortList[j][1] in valueSet[i]:
+                    mergeSet.append(i)
+                    break
+
+        j = len(mergeSet)-1
+        while j > 0:
+            numSet[mergeSet[0]].extend(numSet[mergeSet[j]])
+            numSet=numSet[:mergeSet[j]]+numSet[mergeSet[j]+1:]
+            valueSet[mergeSet[0]].extend(valueSet[mergeSet[j]])
+            valueSet=valueSet[:mergeSet[j]]+valueSet[mergeSet[j]+1:]
+            mergeSet = mergeSet[:j]
+            j-=1
+
+        insertIndex = -1
+        if len(mergeSet) == 0:
+            numSet.append([])
+            valueSet.append([])
+        else:
+            insertIndex = mergeSet[0]
+        numSet[insertIndex].append(i)
+        for k in range(3):
+            if sortList[k][1] not in valueSet[insertIndex]:
+                valueSet[insertIndex].append(sortList[k][1])
+    print(numSet)
+    print(valueSet)
